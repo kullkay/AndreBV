@@ -5,7 +5,8 @@ script_path = input("full path for script.py: ")
 
 
 service_name = input("name service: ")
-
+time = input("metrics build period: ")
+path_csv = input("the path to the file FILE.csv: ")
 
 unit_file_path = f"/etc/systemd/system/{service_name}.service"
 
@@ -17,7 +18,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart = sudo python3 {script_path}
+ExecStart = sudo python3 {script_path} {time} {path_csv}
 
 
 [Install]

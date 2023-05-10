@@ -4,7 +4,7 @@ import csv
 import time
 import subprocess
 import struct
-
+import sys
 
 
 port='2345'
@@ -106,12 +106,9 @@ def save_data(path_to_data):			#the function of saving to a FILE.csv
 
 def main(): 
 	global data
-	#path_to_data=input("Enter the path to the csv file: ")
-	#time_per = int(input("Enter the period for collecting information about port 2345: "))
-	config_file = open("/home/andrew/work/test/config.txt", "r")
-	values = config_file.read().split("\n")
-	time_per = int(values[0])
-	path_to_data = values[1]
+	args = sys.argv
+	time_per = args[1]
+	path_to_data = args[2]
 	while True:		
 		catch_packet(time_per)
 		save_data(path_to_data)	
