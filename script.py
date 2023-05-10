@@ -5,91 +5,114 @@ import time
 import subprocess
 import struct
 import sys
-
+import socket
+import multiprocessing
 
 port='2345'
-path_to_data ="/home/andrew/work/test/data.csv"
-time_per = 5
+
+time_interval = 5
 data=[	0,	#time_now,
 	0,	#bytes_received,
 	0,	#bytes_sent,
 	0,	#count_client=0
 	''	#error
 ]
-	
+
+sent = multiprocessing.Value('i', 0)
+recv = multiprocessing.Value('i', 0)
+error = multiprocessing.Value('i', 0)
 
 	
-	
-def read_pcap():	#function for reading the pacets.pcap file
-	global sent 
-	global recv 
-	sent=0
-	recv=0
 
-	with open('pacets.pcap', 'rb') as f:
-    
-		header_file = f.read(24)			# global header
+def check_socket(clients_port):
+	global sent
+	global recv
+	sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
+	recv.value=0
+	sent.value=0
+
+	while True:
+
+		data, addr = sock.recvfrom(65535)
+	
+
+		eth_header = data[:14]
+		ip_header = data[14:34]
+		tcp_header = data[34:54]
+
+		(src_mac,) = struct.unpack('!6s', eth_header[6:12])
+		(src_ip, dst_ip) = struct.unpack('!4s4s', ip_header[12:20])
+		(src_port, dst_port) = struct.unpack('!HH', tcp_header[0:4])
+
+		packet_size = len(data)
+		if dst_port == src_port and src_port==2345:
+			error.value=1
+			continue	
+			
+		if dst_port == 2345 and str(src_port) in clients_port:
+			recv.value += packet_size
+			
+			continue
+
+		if src_port == 2345 and str(dst_port) in clients_port:
+			sent.value += packet_size
+			
+			continue
+			
+		if src_port == 2345 and tcp_header[13] & 0x12 == 0x12:
+			host_ip_str=subprocess.run('ip addr | grep -Eo \'inet [0-9.]+\' | awk \'{print $2}\'', shell=True, capture_output=True).stdout.decode()
+			host_ip=host_ip_str.split()
+			if str(socket.inet_ntoa(dst_ip)) in host_ip:
+				continue
+			
+			sent.value += packet_size
+			clients_port.append(str(dst_port))
+			
+			continue
+
+		if dst_port == 2345 and tcp_header[13] & 0x02 == 0x02:
+			host_ip_str=subprocess.run('ip addr | grep -Eo \'inet [0-9.]+\' | awk \'{print $2}\'', shell=True, capture_output=True).stdout.decode()
+			host_ip=host_ip_str.split()
+			if str(socket.inet_ntoa(src_ip)) in host_ip:
+				continue
+			recv.value += packet_size
+			
+			continue
+			
 		
-
-    
-		while True:
-			header = f.read(16)			# header packet
-			if not header:
-				break
-
-      
-			(_, _, incl_len, _) = struct.unpack('IIII', header)
-			
-			
-			packet_data = f.read(incl_len)		
-			
-			eth_header = packet_data[:14]    
-			ip_header = packet_data[14:34]	
-			tcp_header = packet_data[34:54]
-           
-			src_mac = ':'.join(format(x, '02x') for x in eth_header[6:12])
-			dst_mac = ':'.join(format(x, '02x') for x in eth_header[:6])
-
-			(total_length,) = struct.unpack('!H', ip_header[2:4])
-			
-			(src_port,) = struct.unpack('!H', tcp_header[:2])
-			(dst_port,) = struct.unpack('!H', tcp_header[2:4])
-			
-			pc_mac = find_mac_address()
-			
-			if src_mac in pc_mac:
-				sent+=total_length
-			if dst_mac in pc_mac:
-				recv+=total_length
-			if src_port == dst_port:
-				data[4] = 'Warning: dst_port == src_port == 2345'
-		data[1]=recv
-		data[2]=sent
-        	
-        		
-		
 	
-def find_mac_address():				# finds all the mac addresses of the host
-	mac_address = subprocess.run('ip link show | awk \'$2 ~ /^[0-9]+:/ {print $2}\' ', shell=True, capture_output=True).stdout.decode()
-	mac_address = mac_address.split()
-	return(mac_address)
 
 
-def catch_packet(time_per ):			# the main function of collecting metrics
-	subprocess.run('sudo timeout 5 tcpdump tcp port 2345 -w pacets.pcap', shell=True, capture_output=True)	
-	read_pcap()
 	
+def check_metricks():
 	data[0] = int(time.time())
 	
-	buf_ip=subprocess.run('ss -tr state established \'( sport = :2345 )\' | awk \'{print $4}\'', shell=True, capture_output=True).stdout.decode()
-	buf_ip=buf_ip.split()
-
-	data[3]=len(buf_ip)-1
-
-
-
-
-
+	clients_port_str=subprocess.run('ss -tr state established \'( sport = :2345 )\' | awk -F\':\' \'{print $NF}\' | sed -n \'2,$p\'', shell=True, capture_output=True).stdout.decode()
+	clients_port=clients_port_str.split()
+	
+	data[3]=len(clients_port)
+	
+	
+	
+	process = multiprocessing.Process(target=check_socket, args=(clients_port,))
+	process.start()
+	while True:
+		now_time=time.time()
+		if data[0]+time_interval<=now_time:
+			data[1]=recv.value
+			data[2]=sent.value
+			if error.value == 1:
+				data[4]="Error src_port==dst_port==2345"
+				error.value=0
+			clients_port=0
+			break
+	
+	process.terminate()
+	process.join()
+	
+	
+	
+	
 
 def save_data(path_to_data):			#the function of saving to a FILE.csv
 	with open(path_to_data, "a") as file:
@@ -105,14 +128,16 @@ def save_data(path_to_data):			#the function of saving to a FILE.csv
 
 
 def main(): 
+	#args = sys.argv
+
+	#time_per = args[1]
+	#path_to_data = args[2]
+	
 	global data
-	args = sys.argv
-	time_per = args[1]
-	path_to_data = args[2]
 	while True:		
-		catch_packet(time_per)
-		save_data(path_to_data)	
-		#print(data)
+		check_metricks()
+		#save_data(path_to_data)	
+		print(data)
 		data=[0,0,0,0,'']
 		
 		
