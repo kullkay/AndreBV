@@ -128,9 +128,10 @@ def save_data(path_to_data):			#the function of saving to a FILE.csv
 
 
 def main(): 
+	global time_interval
 	args = sys.argv
 
-    time_per = int(args[1])
+    	time_interval = int(args[1])
 	path_to_data = args[2]
 	
 	global data
