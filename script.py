@@ -15,16 +15,16 @@ data=[	0,	#time_now,
 	0,	#bytes_received,
 	0,	#bytes_sent,
 	0,	#count_client=0
-	''	#error
+
 ]
 
 sent = multiprocessing.Value('i', 0)
 recv = multiprocessing.Value('i', 0)
-error = multiprocessing.Value('i', 0)
+
 
 	
 
-def check_socket(clients_port):
+def check_socket(clients_port): 		#my sniff that intercepts packets and if we raise port 2345 to listen, then we read the traffic
 	global sent
 	global recv
 	sock = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(3))
@@ -40,72 +40,70 @@ def check_socket(clients_port):
 		ip_header = data[14:34]
 		tcp_header = data[34:54]
 
-		(src_mac,) = struct.unpack('!6s', eth_header[6:12])
+		
 		(src_ip, dst_ip) = struct.unpack('!4s4s', ip_header[12:20])
 		(src_port, dst_port) = struct.unpack('!HH', tcp_header[0:4])
 
 		packet_size = len(data)
-		if dst_port == src_port and src_port==2345:
-			error.value=1
-			continue	
-			
-		if dst_port == 2345 and str(src_port) in clients_port:
-			recv.value += packet_size
-			
-			continue
-
-		if src_port == 2345 and str(dst_port) in clients_port:
-			sent.value += packet_size
-			
-			continue
-			
-		if src_port == 2345 and tcp_header[13] & 0x12 == 0x12:
+		
+		
+		
+		
+		if src_port==2345 or dst_port==2345:
+			lstening_ip_str=subprocess.run('ss -tr state listening \'( sport = :2345 )\' | awk \'{print $3}\' | grep -oE \'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\'', 					shell=True, capture_output=True).stdout.decode() 
+			lstening_ip=lstening_ip_str.split()
+			if len(lstening_ip)==0:
+				continue
+				
 			host_ip_str=subprocess.run('ip addr | grep -Eo \'inet [0-9.]+\' | awk \'{print $2}\'', shell=True, capture_output=True).stdout.decode()
 			host_ip=host_ip_str.split()
-			if str(socket.inet_ntoa(dst_ip)) in host_ip:
+			
+			if str(socket.inet_ntoa(dst_ip)) in host_ip and dst_port==2345:
+				recv.value += packet_size
 				continue
 			
-			sent.value += packet_size
-			clients_port.append(str(dst_port))
+			if str(socket.inet_ntoa(src_ip)) in host_ip and src_port==2345:
+				sent.value += packet_size
+				continue
+				 
+				
 			
-			continue
+		
 
-		if dst_port == 2345 and tcp_header[13] & 0x02 == 0x02:
-			host_ip_str=subprocess.run('ip addr | grep -Eo \'inet [0-9.]+\' | awk \'{print $2}\'', shell=True, capture_output=True).stdout.decode()
-			host_ip=host_ip_str.split()
-			if str(socket.inet_ntoa(src_ip)) in host_ip:
-				continue
-			recv.value += packet_size
-			
-			continue
+		
 			
 		
 	
 
 
 	
-def check_metricks():
+def check_metricks(): 			#check_metrics the main function about collecting metrics collects the time and number of users. Starts a separate thread for the check_socket function until the end time of the period arrives
 	data[0] = int(time.time())
 	
 	clients_port_str=subprocess.run('ss -tr state established \'( sport = :2345 )\' | awk -F\':\' \'{print $NF}\' | sed -n \'2,$p\'', shell=True, capture_output=True).stdout.decode()
 	clients_port=clients_port_str.split()
 	
+	lstening_ip_str=subprocess.run('ss -tr state listening \'( sport = :2345 )\' | awk \'{print $3}\' | grep -oE \'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\'', 					shell=True, capture_output=True).stdout.decode()
+	lstening_ip=lstening_ip_str.split()
+	
+	if len(lstening_ip)==0:		#if port 2345 is not raised, then we reset the number of users
+		clients_port=''
+	
+
 	data[3]=len(clients_port)
 	
+		
 	
 	
 	process = multiprocessing.Process(target=check_socket, args=(clients_port,))
 	process.start()
 	while True:
-		now_time=int(time.time())
+		now_time=time.time()
 		if data[0]+time_interval<=now_time:
-			data[1]=recv.value
-			data[2]=sent.value
-			if error.value == 1:
-				data[4]="Error src_port==dst_port==2345"
-				error.value=0
-			clients_port=0
 			break
+	data[1]=recv.value
+	data[2]=sent.value
+	clients_port=0
 	
 	process.terminate()
 	process.join()
@@ -129,12 +127,12 @@ def save_data(path_to_data):			#the function of saving to a FILE.csv
 
 def main(): 
 	global time_interval
+	global data
 	args = sys.argv
 
 	time_interval = int(args[1])
 	path_to_data = args[2]
 	
-	global data
 	while True:		
 		check_metricks()
 		save_data(path_to_data)	
