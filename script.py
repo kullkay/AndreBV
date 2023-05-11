@@ -97,7 +97,7 @@ def check_metricks():
 	process = multiprocessing.Process(target=check_socket, args=(clients_port,))
 	process.start()
 	while True:
-		now_time=time.time()
+		now_time=int(time.time())
 		if data[0]+time_interval<=now_time:
 			data[1]=recv.value
 			data[2]=sent.value
@@ -128,16 +128,16 @@ def save_data(path_to_data):			#the function of saving to a FILE.csv
 
 
 def main(): 
-	#args = sys.argv
+	args = sys.argv
 
-	#time_per = args[1]
-	#path_to_data = args[2]
+    time_per = int(args[1])
+	path_to_data = args[2]
 	
 	global data
 	while True:		
 		check_metricks()
-		#save_data(path_to_data)	
-		print(data)
+		save_data(path_to_data)	
+		#print(data)
 		data=[0,0,0,0,'']
 		
 		
