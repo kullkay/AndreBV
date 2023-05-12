@@ -8,7 +8,7 @@ import sys
 import socket
 import multiprocessing
 
-port='2345'
+
 
 time_interval = 5
 data=[	0,	#time_now,
