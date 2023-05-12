@@ -92,7 +92,7 @@ def check_metricks(): 			#check_metrics the main function about collecting metri
 			
 	data[1]=recv.value
 	data[2]=sent.value
-	data[3]=len(host_est_ip)
+	data[3]=count
 	
 	save_data(path_to_data)	
 	#print(data)
