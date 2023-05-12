@@ -50,7 +50,7 @@ def check_socket(): 		#my sniff that intercepts packets and if we raise port 234
 			
 			lstening_ip_str=subprocess.run('ss -t state listening \'( sport = :2345 )\' | awk \'{print $3}\' | grep -oE \'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\'', 					shell=True, capture_output=True).stdout.decode()
 			lstening_ip=lstening_ip_str.split()
-					
+			
 			if (str(socket.inet_ntoa(dst_ip)) not in lstening_ip) and (str(socket.inet_ntoa(src_ip)) not in lstening_ip) and ('0.0.0.0' not in lstening_ip):
 				continue
 						
@@ -73,15 +73,16 @@ def check_metricks(): 			#check_metrics the main function about collecting metri
 	
 	data[0] = int(time.time())
 	
-	clients_port_str=subprocess.run('ss -t state established \'( sport = :2345 )\' | awk -F\':\' \'{print $NF}\' | sed -n \'2,$p\'', shell=True, capture_output=True).stdout.decode()
-	clients_port=clients_port_str.split()
+	host_est_ip_str=subprocess.run('ss -t state established \'( sport = :2345 )\' | awk \'{print $3}\' | awk -F\':\' \'NR>1 {print $1}\'', shell=True, capture_output=True).stdout.decode()
+	host_est_ip=host_est_ip_str.split()
 			
 	lstening_ip_str=subprocess.run('ss -t state listening \'( sport = :2345 )\' | awk \'{print $3}\' | grep -oE \'[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\'', 					shell=True, capture_output=True).stdout.decode()
 	lstening_ip=lstening_ip_str.split()
-	
-	if len(lstening_ip)==0:		#if port 2345 is not raised, then we reset the number of users
-		clients_port=''
-			
+
+	count=0
+	for est_ip in host_est_ip:
+		if est_ip in lstening_ip or '0.0.0.0' in lstening_ip:
+			count+=1
 	while True:
 
 		now_time=time.time()
@@ -91,7 +92,7 @@ def check_metricks(): 			#check_metrics the main function about collecting metri
 			
 	data[1]=recv.value
 	data[2]=sent.value
-	data[3]=len(clients_port)
+	data[3]=len(host_est_ip)
 	
 	save_data(path_to_data)	
 	#print(data)
